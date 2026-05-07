@@ -11,6 +11,14 @@ def imread_unicode(path: str) -> np.ndarray | None:
     return cv2.imdecode(data, cv2.IMREAD_COLOR)
 
 
+def draw_keypoints(image: np.ndarray, keypoints, color=(0, 255, 0), size=3) -> np.ndarray:
+    out = image.copy()
+    for kp in keypoints:
+        x, y = int(kp.pt[0]), int(kp.pt[1])
+        cv2.circle(out, (x, y), size, color, 1)
+    return out
+
+
 def ndarray_to_qpixmap(img: np.ndarray) -> QPixmap:
     img = np.ascontiguousarray(img)
     h, w, ch = img.shape

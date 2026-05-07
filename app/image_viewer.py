@@ -10,9 +10,14 @@ from utils.image_utils import ndarray_to_qpixmap
 class Tool(Enum):
     NONE = auto()
     BRUSH = auto()
-    CROSSHAIR = auto()
     PICKER = auto()
+    ERASER = auto()
     RULER = auto()
+
+
+class BrushTip(Enum):
+    PIXEL = auto()
+    CROSS = auto()
 
 
 class ImageViewer(QGraphicsView):
@@ -33,11 +38,11 @@ class ImageViewer(QGraphicsView):
         # Tool state
         self._tool = Tool.NONE
         self._brush_color = (255, 0, 0)
+        self._brush_tip = BrushTip.PIXEL
         self._mouse_pressed = False
-        self._ruler_start = None       # (x, y) or None
-        self._ruler_current = None     # (x, y) or None
+        self._ruler_start = None
+        self._ruler_current = None
         self._ruler_items = []
-        self._finished_ruler = None    # (start, end) — finalized ruler, cleared on new ruler start
         self._pipeline = None
 
         self.setRenderHint(QPainter.SmoothPixmapTransform)
@@ -65,6 +70,9 @@ class ImageViewer(QGraphicsView):
     def set_brush_color(self, r: int, g: int, b: int):
         self._brush_color = (r, g, b)
 
+    def set_brush_tip(self, tip: BrushTip):
+        self._brush_tip = tip
+
     def set_pipeline(self, pipeline):
         self._pipeline = pipeline
 
@@ -81,11 +89,6 @@ class ImageViewer(QGraphicsView):
         self._scene.clear()
         self._pixmap_item = self._scene.addPixmap(pixmap)
         self._scene.setSceneRect(self._pixmap_item.boundingRect())
-
-    def _restore_ruler_after_refresh(self):
-        """Re-draw ruler overlay after scene is cleared by set_image."""
-        if self._ruler_start is not None and self._ruler_current is not None:
-            self._redraw_ruler(self._ruler_start, self._ruler_current)
 
     def set_grid_enabled(self, enabled: bool):
         self._grid_enabled = enabled
@@ -144,11 +147,18 @@ class ImageViewer(QGraphicsView):
         if self._tool == Tool.BRUSH:
             self._mouse_pressed = True
             if self._pipeline:
-                self._pipeline.set_pixel(x, y, self._brush_color)
+                self._pipeline.push_undo_snapshot()
+                if self._brush_tip == BrushTip.CROSS:
+                    self._pipeline.draw_crosshair(x, y, self._brush_color)
+                else:
+                    self._pipeline.set_pixel(x, y, self._brush_color)
 
-        elif self._tool == Tool.CROSSHAIR:
-            if self._pipeline:
-                self._pipeline.draw_crosshair(x, y, self._brush_color)
+        elif self._tool == Tool.ERASER:
+            self._mouse_pressed = True
+            if self._pipeline and self._pipeline.pre_brush is not None:
+                self._pipeline.push_undo_snapshot()
+                pb = self._pipeline.pre_brush[y, x]
+                self._pipeline.set_pixel(x, y, tuple(int(c) for c in pb))
 
         elif self._tool == Tool.PICKER:
             if self._image is not None:
@@ -163,8 +173,6 @@ class ImageViewer(QGraphicsView):
                 self._ruler_current = (x, y)
                 self._draw_ruler()
             else:
-                # Second click: finalize
-                self._finished_ruler = (self._ruler_start, self._ruler_current)
                 self._ruler_start = None
                 self._ruler_current = None
 
@@ -194,12 +202,19 @@ class ImageViewer(QGraphicsView):
             if self._pipeline:
                 self._pipeline.set_pixel(x, y, self._brush_color)
 
+        elif self._tool == Tool.ERASER and self._mouse_pressed:
+            if self._pipeline and self._pipeline.pre_brush is not None:
+                pb = self._pipeline.pre_brush[y, x]
+                self._pipeline.set_pixel(x, y, tuple(int(c) for c in pb))
+
         elif self._tool == Tool.RULER and self._ruler_start is not None:
             self._ruler_current = (x, y)
             self._draw_ruler()
             sx, sy = self._ruler_start
-            manhattan = abs(x - sx) + abs(y - sy)
-            self.ruler_distance.emit(f"{manhattan} px")
+            dx = abs(x - sx)
+            dy = abs(y - sy)
+            total = dx + dy
+            self.ruler_distance.emit(f"{total} px  (X:{dx}  Y:{dy})")
 
     def mouseReleaseEvent(self, event):
         self._mouse_pressed = False
@@ -210,6 +225,9 @@ class ImageViewer(QGraphicsView):
         if event.key() == Qt.Key_Escape:
             self._clear_ruler()
             self.set_tool(Tool.NONE)
+        elif event.key() == Qt.Key_Z and event.modifiers() & Qt.ControlModifier:
+            if self._pipeline:
+                self._pipeline.undo()
         else:
             super().keyPressEvent(event)
 
@@ -226,7 +244,6 @@ class ImageViewer(QGraphicsView):
         self._ruler_items.clear()
         self._ruler_start = None
         self._ruler_current = None
-        self._finished_ruler = None
         self.ruler_distance.emit("")
 
     def _draw_ruler(self):
@@ -240,7 +257,6 @@ class ImageViewer(QGraphicsView):
         sx, sy = start
         ex, ey = end
 
-        # Manhattan path: horizontal first, then vertical
         path_pixels = []
         dx = 1 if ex >= sx else -1
         for x in range(sx, ex + dx, dx):
@@ -258,13 +274,11 @@ class ImageViewer(QGraphicsView):
             rect = self._scene.addRect(px, py, 1, 1, pen, brush)
             self._ruler_items.append(rect)
 
-        # Start marker: green
         start_pen = QPen(QColor(0, 255, 0, 200), 0)
         start_brush = QBrush(QColor(0, 255, 0, 200))
         sr = self._scene.addRect(sx, sy, 1, 1, start_pen, start_brush)
         self._ruler_items.append(sr)
 
-        # End marker: red
         end_pen = QPen(QColor(255, 0, 0, 200), 0)
         end_brush = QBrush(QColor(255, 0, 0, 200))
         er = self._scene.addRect(ex, ey, 1, 1, end_pen, end_brush)

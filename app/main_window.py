@@ -66,6 +66,7 @@ class MainWindow(QMainWindow):
         self._viewer.color_picked.connect(self._toolbar.set_color)
         self._toolbar.tool_selected.connect(self._viewer.set_tool)
         self._toolbar.brush_color_changed.connect(self._viewer.set_brush_color)
+        self._toolbar.brush_tip_changed.connect(self._viewer.set_brush_tip)
         self._viewer.set_pipeline(self._pipeline)
         Translator.instance().locale_changed.connect(self._on_language_changed)
 
@@ -168,16 +169,42 @@ class MainWindow(QMainWindow):
     def _export_current(self):
         if self._pipeline.current is None:
             return
+        include_strokes = self._ask_include_strokes()
+        if include_strokes is None:
+            return
         path, _ = QFileDialog.getSaveFileName(
             self, tr("Save Image"),
             filter="PNG (*.png);;JPEG (*.jpg *.jpeg);;BMP (*.bmp)"
         )
         if not path:
             return
-        bgr = cv2.cvtColor(self._pipeline.current, cv2.COLOR_RGB2BGR)
+        source = self._pipeline.current if include_strokes else self._pipeline.pre_brush
+        if source is None:
+            source = self._pipeline.current
+        bgr = cv2.cvtColor(source, cv2.COLOR_RGB2BGR)
         cv2.imwrite(path, bgr)
 
+    def _ask_include_strokes(self):
+        """Returns True/False or None if cancelled."""
+        from PyQt5.QtWidgets import QCheckBox, QDialog, QVBoxLayout, QDialogButtonBox
+        dlg = QDialog(self)
+        dlg.setWindowTitle(tr("Export"))
+        layout = QVBoxLayout(dlg)
+        cb = QCheckBox(tr("Include brush strokes"))
+        cb.setChecked(False)
+        layout.addWidget(cb)
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        layout.addWidget(btns)
+        if not dlg.exec_():
+            return None
+        return cb.isChecked()
+
     def _batch_export(self):
+        include_strokes = self._ask_include_strokes()
+        if include_strokes is None:
+            return
         input_dir = QFileDialog.getExistingDirectory(self, tr("Select Input Folder"))
         if not input_dir:
             return
@@ -232,6 +259,8 @@ class MainWindow(QMainWindow):
             self._file_browser.set_root_path(settings["last_folder"])
         if settings.get("grid_enabled"):
             self._act_grid.setChecked(True)
+        if settings.get("pipeline_config"):
+            self._pipeline.load_config(settings["pipeline_config"])
 
     def closeEvent(self, event):
         settings = {
@@ -240,6 +269,7 @@ class MainWindow(QMainWindow):
             "window_state": self.saveState().toBase64().data().decode(),
             "language": Translator.instance().locale,
             "grid_enabled": self._act_grid.isChecked(),
+            "pipeline_config": self._pipeline.to_config(),
         }
         CacheManager.save_settings(settings)
         super().closeEvent(event)

@@ -15,7 +15,9 @@ class Pipeline(QObject):
         super().__init__()
         self._original: np.ndarray = None
         self._current: np.ndarray = None
+        self._pre_brush: np.ndarray = None
         self._stages: list[PipelineStage] = []
+        self._undo_stack: list[np.ndarray] = []
 
     def load_image(self, path: str):
         img = imread_unicode(path)
@@ -36,7 +38,9 @@ class Pipeline(QObject):
         img = self._original.copy()
         for stage in self._stages:
             img = stage.apply(img)
-        self._current = img
+        self._pre_brush = img
+        self._current = img.copy()
+        self._undo_stack.clear()
         self.image_changed.emit(self._current)
 
     def process_image(self, img: np.ndarray) -> np.ndarray:
@@ -123,6 +127,17 @@ class Pipeline(QObject):
 
     # --- Pixel editing ---
 
+    def push_undo_snapshot(self):
+        if self._current is not None:
+            self._undo_stack.append(self._current.copy())
+            if len(self._undo_stack) > 100:
+                self._undo_stack.pop(0)
+
+    def undo(self):
+        if self._undo_stack:
+            self._current = self._undo_stack.pop()
+            self.image_changed.emit(self._current)
+
     def set_pixel(self, x: int, y: int, color: tuple):
         if self._current is None:
             return
@@ -154,3 +169,7 @@ class Pipeline(QObject):
     @property
     def current(self) -> np.ndarray | None:
         return self._current
+
+    @property
+    def pre_brush(self) -> np.ndarray | None:
+        return self._pre_brush

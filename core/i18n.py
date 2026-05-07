@@ -88,6 +88,18 @@ _TRANSLATIONS = {
     "Crosshair": "十字",
     "Picker": "取色器",
     "Strength": "强度",
+    "Eraser": "橡皮擦",
+    "Include brush strokes": "包含画笔笔记",
+    "Pixel": "单像素",
+    "Cross": "十字",
+    "Keypoint": "关键点",
+    "N Features": "特征数量",
+    "K Value": "K 值",
+    "Threshold": "阈值",
+    "Edge Threshold": "边缘阈值",
+    "Contrast Threshold": "对比度阈值",
+    "Scale Factor": "缩放因子",
+    "Non-max Suppression": "非极大值抑制",
 }
 
 
