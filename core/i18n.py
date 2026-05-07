@@ -44,9 +44,8 @@ _TRANSLATIONS = {
     "Contrast": "对比度",
     "Convolution": "卷积",
     "Gaussian Blur": "高斯模糊",
-    "Laplacian": "拉普拉斯",
-    "Sobel": "索贝尔",
-    "Canny Edge": "Canny边缘检测",
+    "Sharpen": "锐化",
+    "Grayscale": "灰度",
     "Blur": "模糊",
     "Edge Detection": "边缘检测",
     "Color": "色彩调整",
@@ -82,6 +81,13 @@ _TRANSLATIONS = {
     "Batch export complete. {} files processed.": "批量导出完成。已处理 {} 个文件。",
     "No images found in folder.": "文件夹中未找到图像。",
     "No pipeline stages to export with.": "管线中没有阶段，将导出原图。",
+    "LAB: {}": "LAB: {}",
+    "Dist: {}": "距离: {}",
+    "Ruler": "距离尺",
+    "Brush": "画笔",
+    "Crosshair": "十字",
+    "Picker": "取色器",
+    "Strength": "强度",
 }
 
 

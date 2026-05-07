@@ -16,7 +16,7 @@ class Contrast(FilterBase):
                 param_type="slider",
                 default=1.0,
                 min_val=0.0,
-                max_val=3.0,
+                max_val=10.0,
                 step=0.01,
             ),
             ParamDef(
@@ -24,8 +24,8 @@ class Contrast(FilterBase):
                 label="Brightness",
                 param_type="slider",
                 default=0.0,
-                min_val=-100.0,
-                max_val=100.0,
+                min_val=-1000.0,
+                max_val=1000.0,
                 step=1.0,
             ),
         ]

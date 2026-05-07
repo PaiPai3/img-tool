@@ -121,6 +121,26 @@ class Pipeline(QObject):
         self._process()
         self.pipeline_changed.emit()
 
+    # --- Pixel editing ---
+
+    def set_pixel(self, x: int, y: int, color: tuple):
+        if self._current is None:
+            return
+        h, w = self._current.shape[:2]
+        if 0 <= x < w and 0 <= y < h:
+            self._current[y, x] = color
+            self.image_changed.emit(self._current)
+
+    def draw_crosshair(self, x: int, y: int, color: tuple, length: int = 5):
+        if self._current is None:
+            return
+        h, w = self._current.shape[:2]
+        x1, x2 = max(0, x - length), min(w - 1, x + length)
+        y1, y2 = max(0, y - length), min(h - 1, y + length)
+        self._current[y, x1:x2 + 1] = color
+        self._current[y1:y2 + 1, x] = color
+        self.image_changed.emit(self._current)
+
     # --- Properties ---
 
     @property

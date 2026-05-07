@@ -155,6 +155,7 @@ class PipelinePanel(QWidget):
                 item = QTreeWidgetItem(cat_item, [tr(name)])
                 item.setData(0, Qt.UserRole, filter_cls)
         self._filter_tree.expandAll()
+        self._filter_tree.itemDoubleClicked.connect(self._on_add_stage)
 
     def _on_add_stage(self):
         current = self._filter_tree.currentItem()

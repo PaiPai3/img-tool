@@ -10,6 +10,7 @@ from app.file_browser import FileBrowser
 from app.image_viewer import ImageViewer
 from app.pipeline_panel import PipelinePanel
 from app.status_bar import ImageStatusBar
+from app.toolbar import FloatingToolbar
 from core.pipeline import Pipeline
 from core.cache_manager import CacheManager
 from core.i18n import tr, Translator
@@ -48,6 +49,10 @@ class MainWindow(QMainWindow):
         self._status_bar = ImageStatusBar()
         self.setStatusBar(self._status_bar)
 
+        # -- Floating toolbar (child of viewer) --
+        self._toolbar = FloatingToolbar(self._viewer)
+        self._toolbar.move(8, 8)
+
         # -- Menu bar --
         self._build_menus()
 
@@ -57,6 +62,11 @@ class MainWindow(QMainWindow):
         self._file_browser.file_selected.connect(self._load_image)
         self._viewer.pixel_hovered.connect(self._status_bar.set_pixel)
         self._viewer.zoom_changed.connect(self._status_bar.set_zoom)
+        self._viewer.ruler_distance.connect(self._status_bar.set_ruler_distance)
+        self._viewer.color_picked.connect(self._toolbar.set_color)
+        self._toolbar.tool_selected.connect(self._viewer.set_tool)
+        self._toolbar.brush_color_changed.connect(self._viewer.set_brush_color)
+        self._viewer.set_pipeline(self._pipeline)
         Translator.instance().locale_changed.connect(self._on_language_changed)
 
         # -- Restore settings --
