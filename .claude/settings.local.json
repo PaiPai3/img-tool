@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Recurse -File -Name)",
+      "Bash(Select-Object -First 50)",
+      "Bash(pip install *)",
+      "Bash(python *)",
+      "PowerShell(Get-Command *)",
+      "PowerShell(python -c \"from PyQt5.QtWidgets import QApplication; print\\('PyQt5 OK'\\)\")",
+      "Bash(git *)",
+      "Bash(Remove-Item *)"
+    ]
+  }
+}
