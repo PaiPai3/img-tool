@@ -1,3 +1,4 @@
+import json
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTreeWidget, QTreeWidgetItem,
     QFormLayout, QSlider, QSpinBox, QCheckBox, QComboBox, QPushButton,
@@ -64,11 +65,13 @@ class StageRow(QFrame):
 
 class PipelinePanel(QWidget):
     pipeline_changed = pyqtSignal()
+    stage_edit_requested = pyqtSignal(str, int)  # stage_id, clip_index
 
     def __init__(self, pipeline, parent=None):
         super().__init__(parent)
         self._pipeline = pipeline
         self._selected_stage_id: str | None = None
+        self._editing_clip_index: int = -1
         self._param_widgets: dict[str, object] = {}
         self._current_filter_instance: FilterBase = None
 
@@ -194,6 +197,7 @@ class PipelinePanel(QWidget):
 
     def _select_stage(self, stage_id: str | None):
         self._selected_stage_id = stage_id
+        self._editing_clip_index = -1
         self._clear_params()
 
         if stage_id is None:
@@ -207,6 +211,21 @@ class PipelinePanel(QWidget):
             return
 
         self._current_filter_instance = stage.filter_instance
+        if stage.filter_instance.name == "Crop Move":
+            self._build_clip_panel(stage)
+            self._param_group.setVisible(True)
+            self._reset_btn.setVisible(False)
+            return
+        if stage.filter_instance.name == "Crop":
+            self._build_crop_rect_panel(stage)
+            self._param_group.setVisible(True)
+            self._reset_btn.setVisible(False)
+            return
+        if stage.filter_instance.interactive:
+            self._param_group.setVisible(False)
+            self._reset_btn.setVisible(False)
+            self.stage_edit_requested.emit(stage_id, -1)
+            return
         self._build_param_widgets(stage.params)
         self._param_group.setVisible(True)
         self._reset_btn.setVisible(True)
@@ -328,6 +347,220 @@ class PipelinePanel(QWidget):
         self._clear_params()
         self._build_param_widgets(defaults)
         self._param_group.setVisible(True)
+
+    # --- Interactive crop rect panel (Crop) ---
+
+    def _build_crop_rect_panel(self, stage):
+        self._clear_params()
+        try:
+            rect = json.loads(stage.params.get("rect", '{"x":0,"y":0,"w":100,"h":100}'))
+        except (json.JSONDecodeError, TypeError):
+            rect = {"x": 0, "y": 0, "w": 100, "h": 100}
+
+        self._edit_crop_btn = QPushButton(tr("Draw Rect"))
+        self._edit_crop_btn.clicked.connect(self._on_edit_crop_rect)
+        self._param_layout.addRow(self._edit_crop_btn)
+
+        rect_widget = QWidget()
+        rl = QHBoxLayout(rect_widget)
+        rl.setContentsMargins(0, 0, 0, 0)
+        rl.setSpacing(2)
+        for key, label in [("x","L"),("y","T"),("w","W"),("h","H")]:
+            ll = QLabel(label)
+            ll.setFixedWidth(10)
+            rl.addWidget(ll)
+            sp = QSpinBox()
+            sp.setRange(0, 99999)
+            sp.setValue(int(rect.get(key, 0)))
+            sp.setFixedWidth(50)
+            sp.valueChanged.connect(lambda v, k=key: self._on_crop_rect_value(k, v))
+            sp.setObjectName(f"crop_{key}")
+            rl.addWidget(sp)
+        rl.addStretch()
+        self._param_layout.addRow(rect_widget)
+
+    def _on_edit_crop_rect(self):
+        if self._selected_stage_id:
+            self.stage_edit_requested.emit(self._selected_stage_id, 0)
+
+    def _on_crop_rect_value(self, key, value):
+        if self._selected_stage_id is None or self._pipeline is None:
+            return
+        stage = next((s for s in self._pipeline.stages if s.id == self._selected_stage_id), None)
+        if stage is None:
+            return
+        try:
+            rect = json.loads(stage.params.get("rect", "{}"))
+        except (json.JSONDecodeError, TypeError):
+            rect = {}
+        rect[key] = value
+        self._pipeline.set_stage_params(self._selected_stage_id, {"rect": json.dumps(rect)})
+
+    # --- Interactive clip panel (CropMove) ---
+
+    def _build_clip_panel(self, stage):
+        self._clear_params()
+        clips_str = stage.params.get("clips", "[]")
+        try:
+            clips = json.loads(clips_str)
+        except (json.JSONDecodeError, TypeError):
+            clips = []
+
+        # "+ New Clip" button
+        self._add_clip_btn = QPushButton(tr("New Clip"))
+        self._add_clip_btn.clicked.connect(self._on_new_clip)
+        self._param_layout.addRow(self._add_clip_btn)
+
+        # Clip rows container
+        self._clip_rows_widget = QWidget()
+        self._clip_rows_layout = QVBoxLayout(self._clip_rows_widget)
+        self._clip_rows_layout.setContentsMargins(0, 0, 0, 0)
+        self._param_layout.addRow(self._clip_rows_widget)
+
+        self._refresh_clip_rows(clips)
+
+    def _refresh_clip_rows(self, clips):
+        while self._clip_rows_layout.count() > 0:
+            item = self._clip_rows_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        FONT_STYLE = "font-size: 10px;"
+        SP_W = 44
+
+        for i, clip in enumerate(clips):
+            row = QFrame()
+            row.setFrameStyle(QFrame.StyledPanel | QFrame.Plain)
+            vbox = QVBoxLayout(row)
+            vbox.setContentsMargins(3, 1, 3, 1)
+            vbox.setSpacing(1)
+
+            # Row 1: ☑ #N L:___ T:___ W:___ H:___
+            r1 = QHBoxLayout()
+            r1.setSpacing(1)
+
+            cb = QCheckBox()
+            cb.setChecked(clip.get("visible", True))
+            cb.toggled.connect(lambda v, idx=i: self._on_clip_visible(idx, v))
+            r1.addWidget(cb)
+
+            idx_lbl = QLabel(f"#{i + 1}")
+            idx_lbl.setFixedWidth(20)
+            idx_lbl.setStyleSheet(FONT_STYLE)
+            r1.addWidget(idx_lbl)
+
+            for key, label in [("x", "L"), ("y", "T"), ("w", "W"), ("h", "H")]:
+                ll = QLabel(label)
+                ll.setStyleSheet(FONT_STYLE)
+                ll.setFixedWidth(10)
+                r1.addWidget(ll)
+                sp = QSpinBox()
+                sp.setRange(0, 99999)
+                sp.setValue(int(clip.get(key, 0)))
+                sp.setFixedWidth(SP_W)
+                sp.setStyleSheet(FONT_STYLE)
+                sp.valueChanged.connect(lambda v, k=key, idx=i: self._on_clip_value(k, idx, v))
+                r1.addWidget(sp)
+            r1.addStretch()
+            vbox.addLayout(r1)
+
+            # Row 2: → DL:___ DT:___ [移动] [✕]
+            r2 = QHBoxLayout()
+            r2.setSpacing(1)
+            arrow = QLabel("→")
+            arrow.setFixedWidth(12)
+            arrow.setStyleSheet(FONT_STYLE)
+            r2.addWidget(arrow)
+
+            for key, label in [("dx", "DL"), ("dy", "DT")]:
+                ll = QLabel(label)
+                ll.setStyleSheet(FONT_STYLE)
+                ll.setFixedWidth(14)
+                r2.addWidget(ll)
+                sp = QSpinBox()
+                sp.setRange(-99999, 99999)
+                sp.setValue(int(clip.get(key, 0)))
+                sp.setFixedWidth(SP_W)
+                sp.setStyleSheet(FONT_STYLE)
+                sp.valueChanged.connect(lambda v, k=key, idx=i: self._on_clip_value(k, idx, v))
+                r2.addWidget(sp)
+            r2.addStretch()
+
+            editing = (self._editing_clip_index == i)
+            move_btn = QPushButton(tr("Move"))
+            move_btn.setFixedWidth(40)
+            move_btn.setStyleSheet(
+                "QPushButton { font-size: 10px; padding: 1px 4px; }"
+                + ("QPushButton { background: #4a90d9; color: #fff; }" if editing else "")
+            )
+            move_btn.clicked.connect(lambda checked, idx=i: self._on_edit_clip(idx))
+            del_btn = QPushButton("✕")
+            del_btn.setFixedWidth(22)
+            del_btn.setStyleSheet("QPushButton { font-size: 10px; padding: 1px 2px; }")
+            del_btn.clicked.connect(lambda checked, idx=i: self._on_delete_clip(idx))
+            r2.addWidget(move_btn)
+            r2.addWidget(del_btn)
+            vbox.addLayout(r2)
+
+            self._clip_rows_layout.addWidget(row)
+
+        self._clip_rows_layout.addStretch()
+
+    def _get_clips(self):
+        if self._selected_stage_id is None or self._pipeline is None:
+            return []
+        stage = next((s for s in self._pipeline.stages if s.id == self._selected_stage_id), None)
+        if stage is None:
+            return []
+        try:
+            return json.loads(stage.params.get("clips", "[]"))
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    def _save_clips(self, clips):
+        if self._selected_stage_id is None or self._pipeline is None:
+            return
+        self._pipeline.set_stage_params(self._selected_stage_id, {"clips": json.dumps(clips)})
+        self._refresh_clip_rows(clips)
+
+    def _on_new_clip(self):
+        clips = self._get_clips()
+        clips.append({"x": 0, "y": 0, "w": 0, "h": 0, "dx": 0, "dy": 0, "visible": True})
+        self._save_clips(clips)
+        if self._selected_stage_id:
+            self.stage_edit_requested.emit(self._selected_stage_id, len(clips) - 1)
+
+    def _on_delete_clip(self, index):
+        clips = self._get_clips()
+        if 0 <= index < len(clips):
+            clips.pop(index)
+            self._save_clips(clips)
+
+    def _on_edit_clip(self, index):
+        if not self._selected_stage_id:
+            return
+        if self._editing_clip_index == index:
+            self._editing_clip_index = -1
+            self.stage_edit_requested.emit(self._selected_stage_id, -1)
+        else:
+            self._editing_clip_index = index
+            self.stage_edit_requested.emit(self._selected_stage_id, index)
+        clips = self._get_clips()
+        self._refresh_clip_rows(clips)
+
+    def _on_clip_visible(self, index, visible):
+        clips = self._get_clips()
+        if 0 <= index < len(clips):
+            clips[index]["visible"] = visible
+            self._save_clips(clips)
+
+    def _on_clip_value(self, key, index, value):
+        clips = self._get_clips()
+        if 0 <= index < len(clips):
+            clips[index][key] = value
+            self._save_clips(clips)
+
+    # --- Save / Load ---
 
     def _on_save_pipeline(self):
         from core.cache_manager import CacheManager

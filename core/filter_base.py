@@ -18,6 +18,7 @@ class ParamDef:
 class FilterBase(ABC):
     name: str = ""
     category: str = ""
+    interactive: bool = False
 
     @abstractmethod
     def apply(self, image: np.ndarray, **params) -> np.ndarray:

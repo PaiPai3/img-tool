@@ -47,6 +47,11 @@ class FloatingToolbar(QWidget):
         self._color_swatch.mousePressEvent = lambda e: self._pick_color()
         layout.addWidget(self._color_swatch)
 
+        # Drag button (returns to NONE)
+        self._btn_drag = QPushButton(tr("Drag"))
+        self._btn_drag.setCheckable(True)
+        self._btn_drag.clicked.connect(self._on_drag)
+
         # Brush button
         self._btn_brush = QPushButton(tr("Brush"))
         self._btn_brush.setCheckable(True)
@@ -74,7 +79,9 @@ class FloatingToolbar(QWidget):
         self._btn_ruler.clicked.connect(lambda: self._select(Tool.RULER))
 
         self._buttons = [self._btn_brush, self._btn_eraser, self._btn_picker, self._btn_ruler]
+        self._all_btns = self._buttons + [self._btn_drag]
 
+        layout.addWidget(self._btn_drag)
         layout.addWidget(self._btn_brush)
         layout.addWidget(self._tip_combo)
         layout.addWidget(self._btn_eraser)
@@ -83,17 +90,18 @@ class FloatingToolbar(QWidget):
 
         Translator.instance().locale_changed.connect(self.retranslate_ui)
 
+    def _on_drag(self):
+        for btn in self._all_btns:
+            btn.setChecked(False)
+        self._active_tool = Tool.NONE
+        self.tool_selected.emit(Tool.NONE)
+
     def _select(self, tool: Tool):
         if self._active_tool == tool:
-            # Toggle off: return to NONE
-            for btn in self._buttons:
-                btn.setChecked(False)
-            self._active_tool = Tool.NONE
-            self.tool_selected.emit(Tool.NONE)
-            return
+            return self._on_drag()
 
         self._active_tool = tool
-        for btn in self._buttons:
+        for btn in self._all_btns:
             btn.setChecked(False)
         idx = _TOOL_LIST.index(tool)
         self._buttons[idx].setChecked(True)
@@ -120,6 +128,7 @@ class FloatingToolbar(QWidget):
             self.brush_color_changed.emit(r, g, b)
 
     def retranslate_ui(self):
+        self._btn_drag.setText(tr("Drag"))
         self._btn_brush.setText(tr("Brush"))
         self._btn_eraser.setText(tr("Eraser"))
         self._btn_picker.setText(tr("Picker"))

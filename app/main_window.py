@@ -68,6 +68,7 @@ class MainWindow(QMainWindow):
         self._toolbar.brush_color_changed.connect(self._viewer.set_brush_color)
         self._toolbar.brush_tip_changed.connect(self._viewer.set_brush_tip)
         self._viewer.set_pipeline(self._pipeline)
+        self._pipeline_panel.stage_edit_requested.connect(self._viewer.start_stage_edit)
         Translator.instance().locale_changed.connect(self._on_language_changed)
 
         # -- Restore settings --

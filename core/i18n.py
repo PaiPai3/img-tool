@@ -84,6 +84,7 @@ _TRANSLATIONS = {
     "LAB: {}": "LAB: {}",
     "Dist: {}": "距离: {}",
     "Ruler": "距离尺",
+    "Drag": "拖动",
     "Brush": "画笔",
     "Crosshair": "十字",
     "Picker": "取色器",
@@ -100,6 +101,12 @@ _TRANSLATIONS = {
     "Contrast Threshold": "对比度阈值",
     "Scale Factor": "缩放因子",
     "Non-max Suppression": "非极大值抑制",
+    "Transform": "变换",
+    "Crop Move": "截取移动",
+    "Crop": "裁切",
+    "Draw Rect": "绘制矩形",
+    "New Clip": "新增截取片段",
+    "Move": "移动",
 }
 
 

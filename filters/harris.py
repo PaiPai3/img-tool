@@ -45,4 +45,7 @@ class Harris(FilterBase):
         ys, xs = np.where(harris > threshold * harris.max())
         keypoints = [cv2.KeyPoint(float(x), float(y), 1) for x, y in zip(xs, ys)]
 
-        return draw_keypoints(image, keypoints, color=(0, 255, 0), size=3)
+        result = draw_keypoints(image, keypoints, color=(0, 255, 0), size=1)
+        cv2.putText(result, f"Corners: {len(keypoints)}", (10, result.shape[0] - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        return result
