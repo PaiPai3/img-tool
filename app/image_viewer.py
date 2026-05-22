@@ -57,6 +57,10 @@ class ImageViewer(QGraphicsView):
         self._edit_drag_start = None
         self._edit_drag_dx0 = self._edit_drag_dy0 = 0
         self._overlay_items = []
+        self._paint_color = (255, 0, 0)
+        self._paint_tip = "circle"
+        self._paint_size = 3
+        self._paint_mode = "brush"  # "brush", "eraser", "picker"
 
         self.setRenderHint(QPainter.SmoothPixmapTransform)
         self.setDragMode(QGraphicsView.ScrollHandDrag)
@@ -109,6 +113,7 @@ class ImageViewer(QGraphicsView):
         except (json.JSONDecodeError, TypeError):
             clips = []
 
+        is_paint = stage.filter_instance.name == "Paint"
         is_crop = stage.filter_instance.name == "Crop"
         is_cropmove = stage.filter_instance.name == "Crop Move"
 
@@ -118,7 +123,11 @@ class ImageViewer(QGraphicsView):
             self._select_clip_index = clip_index
             self.setDragMode(QGraphicsView.NoDrag)
 
-            if is_crop:
+            if is_paint:
+                self._edit_phase = "paint"
+                self._read_paint_config(stage)
+                self._draw_clips_overlay([], -1, -1)  # clear overlay
+            elif is_crop:
                 # Crop: rect-only editing
                 rect_str = stage.params.get("rect", '{"x":0,"y":0,"w":100,"h":100}')
                 try:
@@ -197,6 +206,45 @@ class ImageViewer(QGraphicsView):
                                     self._edit_x2 - self._edit_x1,
                                     self._edit_y2 - self._edit_y1, bp, QBrush(color))
             self._overlay_items.append(r)
+
+    def _read_paint_config(self, stage):
+        try:
+            cfg = json.loads(stage.params.get("paint_config", "{}"))
+        except (json.JSONDecodeError, TypeError):
+            cfg = {}
+        self._paint_color = tuple(cfg.get("color", [255, 0, 0]))
+        self._paint_tip = cfg.get("tip", "circle")
+        self._paint_size = cfg.get("size", 3)
+        self._paint_mode = cfg.get("mode", "brush")
+
+    def _save_paint_stroke(self, x, y):
+        if self._paint_mode == "picker":
+            if self._image is not None:
+                px = self._image[y, x]
+                r, g, b = int(px[0]), int(px[1]), int(px[2])
+                self._paint_color = (r, g, b)
+            cfg = {"color": list(self._paint_color), "tip": self._paint_tip,
+                   "size": self._paint_size, "mode": "brush"}
+            self._pipeline.set_stage_params(self._edit_stage_id, {"paint_config": json.dumps(cfg)})
+            return
+        stage = next((s for s in self._pipeline.stages if s.id == self._edit_stage_id), None)
+        if stage is None:
+            return
+        try:
+            strokes = json.loads(stage.params.get("strokes", "[]"))
+        except (json.JSONDecodeError, TypeError):
+            strokes = []
+        if self._paint_mode == "eraser":
+            # Store pre_brush color at this pixel
+            if self._pipeline.pre_brush is not None:
+                pb = self._pipeline.pre_brush[y, x]
+                strokes.append({"x": x, "y": y, "erase": True,
+                               "r": int(pb[0]), "g": int(pb[1]), "b": int(pb[2])})
+        else:
+            strokes.append({"x": x, "y": y,
+                           "r": self._paint_color[0], "g": self._paint_color[1], "b": self._paint_color[2],
+                           "tip": self._paint_tip, "size": self._paint_size})
+        self._pipeline.set_stage_params(self._edit_stage_id, {"strokes": json.dumps(strokes)})
 
     def _save_clip_params(self):
         if self._edit_stage_id is None or self._pipeline is None:
@@ -288,11 +336,15 @@ class ImageViewer(QGraphicsView):
         self._scene.setSceneRect(self._pixmap_item.boundingRect())
         if self._edit_stage_id is not None:
             stage = next((s for s in self._pipeline.stages if s.id == self._edit_stage_id), None) if self._pipeline else None
-            if stage and stage.filter_instance.name == "Crop":
-                self._draw_crop_overlay()
-            else:
-                clips = self._get_clips()
-                self._draw_clips_overlay(clips, self._edit_clip_index, self._select_clip_index)
+            if stage:
+                name = stage.filter_instance.name
+                if name == "Paint":
+                    self._read_paint_config(stage)
+                elif name == "Crop":
+                    self._draw_crop_overlay()
+                elif name == "Crop Move":
+                    clips = self._get_clips()
+                    self._draw_clips_overlay(clips, self._edit_clip_index, self._select_clip_index)
 
     def set_grid_enabled(self, enabled: bool):
         self._grid_enabled = enabled
@@ -345,6 +397,11 @@ class ImageViewer(QGraphicsView):
             if xy is None:
                 return
             x, y = xy
+
+            if self._edit_phase == "paint":
+                self._mouse_pressed = True
+                self._save_paint_stroke(x, y)
+                return
 
             if self._edit_phase == "rect":
                 self._edit_rect_start = (x, y)
@@ -477,6 +534,12 @@ class ImageViewer(QGraphicsView):
                       self._edit_x2 - self._edit_x1, self._edit_y2 - self._edit_y1,
                       self._edit_dx, self._edit_dy)
             self._draw_clips_overlay(clips, self._edit_clip_index, self._select_clip_index, preview)
+            return
+
+        # Stage edit paint: drag
+        if self._tool == Tool.NONE and self._edit_phase == "paint" and self._mouse_pressed:
+            if xy is not None:
+                self._save_paint_stroke(xy[0], xy[1])
             return
 
         if self._tool == Tool.NONE:

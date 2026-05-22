@@ -221,6 +221,11 @@ class PipelinePanel(QWidget):
             self._param_group.setVisible(True)
             self._reset_btn.setVisible(False)
             return
+        if stage.filter_instance.name == "Paint":
+            self._build_paint_panel(stage)
+            self._param_group.setVisible(True)
+            self._reset_btn.setVisible(False)
+            return
         if stage.filter_instance.interactive:
             self._param_group.setVisible(False)
             self._reset_btn.setVisible(False)
@@ -347,6 +352,104 @@ class PipelinePanel(QWidget):
         self._clear_params()
         self._build_param_widgets(defaults)
         self._param_group.setVisible(True)
+
+    # --- Interactive paint panel ---
+
+    def _build_paint_panel(self, stage):
+        self._clear_params()
+        self._paint_color = (255, 0, 0)
+        self._paint_tip = "circle"
+        self._paint_size = 3
+        self._paint_erase = False
+        self._paint_pick = False
+
+        # Row 1: tip + size
+        r1 = QHBoxLayout()
+        r1.addWidget(QLabel(tr("Tip") + ":"))
+        self._tip_combo = QComboBox()
+        self._tip_combo.addItems(["circle", "square", "cross"])
+        self._tip_combo.currentTextChanged.connect(self._on_paint_tip)
+        r1.addWidget(self._tip_combo)
+        r1.addWidget(QLabel(tr("Size") + ":"))
+        self._size_spin = QSpinBox()
+        self._size_spin.setRange(1, 30)
+        self._size_spin.setValue(3)
+        self._size_spin.valueChanged.connect(self._on_paint_size)
+        r1.addWidget(self._size_spin)
+        self._param_layout.addRow(r1)
+
+        # Row 2: color swatch + picker + eraser
+        r2 = QHBoxLayout()
+        self._swatch = QLabel()
+        self._swatch.setFixedSize(24, 24)
+        self._swatch.setCursor(Qt.PointingHandCursor)
+        self._swatch.setStyleSheet("background:rgb(255,0,0);border:1px solid #888;border-radius:3px;")
+        self._swatch.mousePressEvent = lambda e: self._pick_paint_color()
+        r2.addWidget(self._swatch)
+
+        self._pick_btn = QPushButton(tr("Picker"))
+        self._pick_btn.setCheckable(True)
+        self._pick_btn.clicked.connect(self._on_toggle_pick)
+        r2.addWidget(self._pick_btn)
+
+        self._erase_btn = QPushButton(tr("Eraser"))
+        self._erase_btn.setCheckable(True)
+        self._erase_btn.clicked.connect(self._on_toggle_erase)
+        r2.addWidget(self._erase_btn)
+
+        self._param_layout.addRow(r2)
+
+        # Row 3: clear strokes
+        self._clear_btn = QPushButton(tr("Clear Strokes"))
+        self._clear_btn.clicked.connect(self._on_clear_strokes)
+        self._param_layout.addRow(self._clear_btn)
+
+        self._save_paint_config()
+        if self._selected_stage_id:
+            self.stage_edit_requested.emit(self._selected_stage_id, 0)
+
+    def _save_paint_config(self):
+        if not self._selected_stage_id or not self._pipeline:
+            return
+        mode = "picker" if self._paint_pick else ("eraser" if self._paint_erase else "brush")
+        cfg = {"tip": self._paint_tip, "size": self._paint_size,
+               "color": list(self._paint_color), "mode": mode}
+        self._pipeline.set_stage_params(self._selected_stage_id, {"paint_config": json.dumps(cfg)})
+
+    def _pick_paint_color(self):
+        from PyQt5.QtWidgets import QColorDialog
+        qc = QColorDialog.getColor()
+        if qc.isValid():
+            r, g, b = qc.red(), qc.green(), qc.blue()
+            self._paint_color = (r, g, b)
+            self._swatch.setStyleSheet(f"background:rgb({r},{g},{b});border:1px solid #888;border-radius:3px;")
+            self._save_paint_config()
+
+    def _on_paint_tip(self, tip):
+        self._paint_tip = tip
+        self._save_paint_config()
+
+    def _on_paint_size(self, size):
+        self._paint_size = size
+        self._save_paint_config()
+
+    def _on_toggle_pick(self, checked):
+        self._paint_pick = checked
+        if checked:
+            self._paint_erase = False
+            self._erase_btn.setChecked(False)
+        self._save_paint_config()
+
+    def _on_toggle_erase(self, checked):
+        self._paint_erase = checked
+        if checked:
+            self._paint_pick = False
+            self._pick_btn.setChecked(False)
+        self._save_paint_config()
+
+    def _on_clear_strokes(self):
+        if self._selected_stage_id and self._pipeline:
+            self._pipeline.set_stage_params(self._selected_stage_id, {"strokes": "[]"})
 
     # --- Interactive crop rect panel (Crop) ---
 

@@ -87,7 +87,7 @@ class Pipeline(QObject):
     def set_stage_params(self, stage_id: str, params: dict):
         for s in self._stages:
             if s.id == stage_id:
-                s.params = dict(params)
+                s.params.update(params)
                 self._process()
                 return
 

@@ -28,6 +28,10 @@ class Harris(FilterBase):
                 name="threshold", label="Threshold", param_type="slider",
                 default=0.01, min_val=0.001, max_val=0.1, step=0.001,
             ),
+            ParamDef(
+                name="radius", label="Radius", param_type="int_spin",
+                default=1, min_val=1, max_val=20, step=1,
+            ),
         ]
 
     def apply(self, image: np.ndarray, **params) -> np.ndarray:
@@ -37,6 +41,7 @@ class Harris(FilterBase):
             ksize += 1
         k = float(params.get("k", 0.04))
         threshold = float(params.get("threshold", 0.01))
+        radius = int(params.get("radius", 1))
 
         gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
         gray_f32 = np.float32(gray)
@@ -45,7 +50,7 @@ class Harris(FilterBase):
         ys, xs = np.where(harris > threshold * harris.max())
         keypoints = [cv2.KeyPoint(float(x), float(y), 1) for x, y in zip(xs, ys)]
 
-        result = draw_keypoints(image, keypoints, color=(0, 255, 0), size=1)
+        result = draw_keypoints(image, keypoints, color=(0, 255, 0), size=radius)
         cv2.putText(result, f"Corners: {len(keypoints)}", (10, result.shape[0] - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
         return result

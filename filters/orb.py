@@ -20,14 +20,19 @@ class ORB(FilterBase):
                 name="scale_factor", label="Scale Factor", param_type="slider",
                 default=1.2, min_val=1.1, max_val=2.0, step=0.1,
             ),
+            ParamDef(
+                name="radius", label="Radius", param_type="int_spin",
+                default=3, min_val=1, max_val=20, step=1,
+            ),
         ]
 
     def apply(self, image: np.ndarray, **params) -> np.ndarray:
         nfeatures = int(params.get("nfeatures", 500))
         scale_factor = float(params.get("scale_factor", 1.2))
+        radius = int(params.get("radius", 3))
 
         gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
         orb = cv2.ORB_create(nfeatures=nfeatures, scaleFactor=scale_factor)
         keypoints = orb.detect(gray, None)
 
-        return draw_keypoints(image, keypoints, color=(0, 255, 0), size=3)
+        return draw_keypoints(image, keypoints, color=(0, 255, 0), size=radius)
